@@ -1,7 +1,24 @@
--- To add to your server, place the following into the CSP Extra Options. (This was tested on CSP 2.11, no guarantees this functions on any other versions)
+-- Betterflags
+-- Better flag implementation! Adds Meatball Flag, No-overtake zones, and Slow Car Ahead flag from ACC. Can display them all in parallel.
+--
+-- If you open the "Chat" app, and click the lightbulb, you can preview and move the flags anywhere on screen.
+--
+-- Put the following into your AC server CSP EXTRA OPTIONS:
+--
 -- [SCRIPT_...]
--- SCRIPT = "(Github Raw Link Here.)"
--- 
+-- SCRIPT = "https://raw.githubusercontent.com/JanuarySnow/OSRLUASNIPPETS/refs/heads/main/Server%20Scripts/betterflags.lua"
+--
+-- [BETTERFLAGS]
+-- NO_OVERTAKE_ZONE_1=0.2,0.3 ;Defines the First no-overtake zone as two points on track, flag will be displayed between them.
+-- NO_OVERTAKE_ZONE_2=0,0 ;Use the track coordinates app from the ingame App Shelf app to quickly find the track coordinates.
+-- NO_OVERTAKE_ZONE_3=0,0
+-- MEATBALL_THRESHOLD=0.10 ;Suspension Damage Threshold to display meatball flag. Value from 0-1. Lower = more sensitive.
+-- SLOW_CAR_WARN_DISTANCE=500,100 ;how far in front and behind to enable slow car. (500,100 means slow car flag would be active 500m before and 100m after slow car)
+-- SLOW_CAR_PENALTY=-1,5 ; -1 for no penalty (white flag) , 0 for chat message (code60 flag), anything above will be laps to serve drive through (code60 flag).
+-- ;optional second value is how long people have to slow down to 60kmh.
+-- SLOW_CAR_CONFIRM_DELAY=3.0 ;how many seconds a car must be stationary before the slow car flag appears. Default is 3.0.
+-- ENABLE_PHYSICS_FLAGS=1 ;experimental, activates ac yellow under slow car conditions.
+--
 -- if youre still stuck check here: https://github.com/ac-custom-shaders-patch/acc-extension-config/wiki/Misc-%E2%80%93-Server-extra-options#online-scripts
 
 
@@ -24,6 +41,8 @@ frameCounter = 0
 SLOW_CAR_CHECK_INTERVAL = 60
 SLOW_CAR_CONFIRM_DELAY = 3.0
 slowCarConfirmed = false
+slowCarPenaltySet = false
+raceStarted = false
 
 betterFlagSettings = ac.storage({
     flagWindowX=0,flagWindowY=0,flagWindowScale=1
@@ -46,6 +65,7 @@ ac.onOnlineWelcome(function(message, config)
     slowCarDistanceBehind, slowCarDistanceAhead = (config:get("BETTERFLAGS", "SLOW_CAR_WARN_DISTANCE", 500,1)), (config:get("BETTERFLAGS", "SLOW_CAR_WARN_DISTANCE", 100,2))
     slowCarSpeed = (config:get("BETTERFLAGS", "SLOW_CAR_SPEED", 35))
     slowCarPenalties, code60Timer = (config:get("BETTERFLAGS", "SLOW_CAR_PENALTY", -1,1)),(config:get("BETTERFLAGS", "SLOW_CAR_PENALTY", 5,2))
+    SLOW_CAR_CONFIRM_DELAY = config:get("BETTERFLAGS", "SLOW_CAR_CONFIRM_DELAY", 3.0)
     enablePhysicsFlags = config:get("BETTERFLAGS", "ENABLE_PHYSICS_FLAGS", 1)
 
     ac.log("Slow Car Test Stuff:")
@@ -53,65 +73,65 @@ ac.onOnlineWelcome(function(message, config)
     ac.log(slowCarPenalties, code60Timer)
 end)
 
-    ac.debug("!version", "betterflags v0.66")
+    ac.debug("!version", "betterflags v0.67")
 
 function makeFlags()
 
-    startFlag = ui.ExtraCanvas(vec2(256,256)) 
+    startFlag = ui.ExtraCanvas(vec2(256,256))
     startFlag:setName("startFlag")
     startFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.Start)
     end)
 
-    cautionFlag = ui.ExtraCanvas(vec2(256,256)) 
+    cautionFlag = ui.ExtraCanvas(vec2(256,256))
     cautionFlag:setName("cautionFlag")
     cautionFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.Caution)
     end)
 
-    slipperyFlag = ui.ExtraCanvas(vec2(256,256)) 
+    slipperyFlag = ui.ExtraCanvas(vec2(256,256))
     slipperyFlag:setName("slipperyFlag")
     slipperyFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.Slippery)
     end)
 
-    blackFlag = ui.ExtraCanvas(vec2(256,256)) 
+    blackFlag = ui.ExtraCanvas(vec2(256,256))
     blackFlag:setName("blackFlag")
     blackFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.Stop)
     end)
 
-    whiteFlag = ui.ExtraCanvas(vec2(256,256)) 
+    whiteFlag = ui.ExtraCanvas(vec2(256,256))
     whiteFlag:setName("whiteFlag")
     whiteFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.SlowVehicle)
     end)
 
-    ambulanceFlag = ui.ExtraCanvas(vec2(256,256)) 
+    ambulanceFlag = ui.ExtraCanvas(vec2(256,256))
     ambulanceFlag:setName("ambulanceFlag")
     ambulanceFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.Ambulance)
     end)
 
-    blackWhiteFlag = ui.ExtraCanvas(vec2(256,256)) 
+    blackWhiteFlag = ui.ExtraCanvas(vec2(256,256))
     blackWhiteFlag:setName("blackWhiteFlag")
     blackWhiteFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.ReturnToPits)
     end)
 
-    meatballFlag = ui.ExtraCanvas(vec2(256,256)) 
+    meatballFlag = ui.ExtraCanvas(vec2(256,256))
     meatballFlag:setName("meatballFlag")
     meatballFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.MechanicalFailure)
     end)
 
-    blueFlag = ui.ExtraCanvas(vec2(256,256)) 
+    blueFlag = ui.ExtraCanvas(vec2(256,256))
     blueFlag:setName("blueFlag")
     blueFlag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.FasterCar)
     end)
 
-    code60Flag = ui.ExtraCanvas(vec2(256,256)) 
+    code60Flag = ui.ExtraCanvas(vec2(256,256))
     code60Flag:setName("code60Flag")
     code60Flag:update(function (dt)
         ui.drawRaceFlag(ac.FlagType.Code60)
@@ -165,6 +185,19 @@ function updateSlowCarTimers(dt)
 end
 
 function checkSlowCarPresence()
+    if not raceStarted then
+        for _, c in ac.iterateCars() do
+            if c.speedKmh > 50 then
+                raceStarted = true
+                break
+            end
+        end
+        if not raceStarted then
+            slowCarTimers = {}
+            return false
+        end
+    end
+
     if ac.getCar(0).isInPitlane then
         slowCarTimers = {}
         return false
@@ -271,14 +304,14 @@ ac.onResolutionChange(function()
     windowWidth, windowHeight = ac.getSim().windowWidth,ac.getSim().windowHeight
 
         mirrorScale = windowHeight/1800
-        
+
 
         vmirrorTop = (85/uiScale)
         vmirrorLeft = ((windowWidth/2)-(425.45525*mirrorScale)-2)/uiScale
         vmirrorBottom = ((213.78521*mirrorScale+83.3)/uiScale)
         vmirrorRight = ((windowWidth/2)+(425.45525*mirrorScale)+2)/uiScale
     flagsWindow = ui.ExtraCanvas(vec2(windowWidth,windowHeight))
-        
+
 end)
 
 ui.registerOnlineExtra(ui.Icons.Flag, "BetterFlags Settings", function() return true end,
@@ -294,7 +327,7 @@ ui.registerOnlineExtra(ui.Icons.Flag, "BetterFlags Settings", function() return 
             betterFlagSettings = tempSettings
             return true
         end
-        
+
     end,
     function(cancel)
         settingsOverride = false
