@@ -20,7 +20,7 @@ If you open the "Chat" app, and click the lightbulb, you can preview and move th
 Put the following into your AC server CSP EXTRA OPTIONS:
 ```
 [SCRIPT_...]
-SCRIPT = "https://raw.githubusercontent.com/tetematete/OSRLUASNIPPETS/refs/heads/main/Server%20Scripts/betterflags.lua"
+SCRIPT = "https://raw.githubusercontent.com/JanuarySnow/OSRLUASNIPPETS/refs/heads/main/Server%20Scripts/betterflags.lua"
 
 [BETTERFLAGS]
 NO_OVERTAKE_ZONE_1=0.2,0.3 ;Defines the First no-overtake zone as two points on track, flag will be displayed between them.
